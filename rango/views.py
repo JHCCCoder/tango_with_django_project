@@ -1,3 +1,4 @@
+from datetime import datetime
 from django.shortcuts import redirect, render
 from django.http import HttpRequest, HttpResponse
 from django.urls import reverse
@@ -10,6 +11,8 @@ from django.contrib.auth.decorators import login_required
 def index(request: HttpRequest):
     categroy_list = Category.objects.order_by('-likes')[:5]
     page_list = Page.objects.order_by('-views')[:5]
+    
+    visitor_cookie_handler(request)
 
     context_dict = {}
     context_dict['boldmessage'] = 'Crunchy, creamy, cookie, candy, cupcake!'
@@ -20,7 +23,12 @@ def index(request: HttpRequest):
 
 
 def about(request: HttpRequest):
-    return render(request, 'rango/about.html')
+    visitor_cookie_handler(request)
+    context_dict = {
+        'visits': int(request.session.get('visits', '1'))
+    }
+
+    return render(request, 'rango/about.html', context=context_dict)
 
 
 def show_category(request: HttpRequest, category_name_slug):
@@ -153,3 +161,25 @@ def user_logout(request: HttpRequest):
 @login_required
 def restricted(request: HttpRequest):
     return render(request, 'rango/restricted.html')
+
+
+def get_server_side_cookie(request: HttpRequest, cookie, default_val=None):
+    val = request.session.get(cookie)
+    if not val:
+        val = default_val
+    return val
+
+
+def visitor_cookie_handler(request: HttpRequest):
+    visits = int(get_server_side_cookie(request, 'visits', '1'))
+
+    last_visit_cookie = get_server_side_cookie(request, 'last_visit', str(datetime.now()))
+    last_vist_time = datetime.strptime(last_visit_cookie[:-7], '%Y-%m-%d %H:%M:%S')
+
+    if (datetime.now() - last_vist_time).days > 0:
+        visits = visits + 1
+        request.session['last_visit'] = str(datetime.now())
+    else:
+        request.session['last_visit'] = last_visit_cookie
+
+    request.session['visits'] = visits
