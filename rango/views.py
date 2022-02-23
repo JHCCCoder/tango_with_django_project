@@ -1,8 +1,10 @@
 from django.shortcuts import redirect, render
-from django.http import HttpRequest
+from django.http import HttpRequest, HttpResponse
 from django.urls import reverse
-from rango.forms import CategoryForm, PageForm
+from rango.forms import CategoryForm, PageForm, UserForm, UserProfileForm
 from rango.models import Category, Page
+from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.decorators import login_required
 
 
 def index(request: HttpRequest):
@@ -37,6 +39,7 @@ def show_category(request: HttpRequest, category_name_slug):
     return render(request, 'rango/category.html', context_dict)
 
 
+@login_required
 def add_category(request: HttpRequest):
     form = CategoryForm()
 
@@ -45,13 +48,14 @@ def add_category(request: HttpRequest):
 
         if form.is_valid():
             form.save(commit=True)
-            return redirect('/rango/')
+            return redirect(reverse('rango:index'))
         else:
             print(form.errors)
 
     return render(request, 'rango/add_category.html', {'form': form})
 
 
+@login_required
 def add_page(request: HttpRequest, category_name_slug):
     try:
         category = Category.objects.get(slug=category_name_slug)
@@ -59,7 +63,7 @@ def add_page(request: HttpRequest, category_name_slug):
         category = None
     
     if category is None:
-        return redirect('/rango/')
+        return redirect(reverse('rango:index'))
 
     form = PageForm()
 
@@ -81,3 +85,71 @@ def add_page(request: HttpRequest, category_name_slug):
 
     context_dict = {'form': form, 'category': category}
     return render(request, f'rango/add_page.html', context_dict)
+
+
+def register(request: HttpRequest):
+    registered = False
+
+    if request.method == 'POST':
+        user_form = UserForm(request.POST)
+        profile_form = UserProfileForm(request.POST)
+
+        if user_form.is_valid() and profile_form.is_valid():
+            user = user_form.save()
+            user.set_password(user.password)
+            user.save()
+
+            profile = profile_form.save(commit=False)
+            profile.user = user
+            if 'picture' in request.FILES:
+                profile.picture = request.FILES['picture']
+            profile.save()
+
+            registered = True
+
+        else:
+            print(user_form.errors, profile_form.errors)
+
+    else:
+        user_form = UserForm()
+        profile_form = UserProfileForm()
+
+    context_dict = {
+        'user_form': user_form,
+        'profile_form': profile_form,
+        'registered': registered
+    }
+    return render(request, 'rango/register.html', context=context_dict)
+
+
+def user_login(request: HttpRequest):
+    if request.method == 'POST':
+        username = request.POST.get('username')
+        password = request.POST.get('password')
+
+        user = authenticate(username=username, password=password)
+
+        if user:
+            if user.is_active:
+                login(request, user)
+                return redirect(reverse('rango:index'))
+            else:
+                return HttpResponse("Your Rango account is disabled.")
+
+        else:
+            print(f"Invalid login details: {username}, {password}")
+            return HttpResponse("Invalid login details supplied.")
+    
+    else:
+        return render(request, 'rango/login.html')
+
+
+@login_required
+def user_logout(request: HttpRequest):
+    logout(request)
+    return redirect(reverse('rango:index'))
+
+
+@login_required
+def restricted(request: HttpRequest):
+    return render(request, 'rango/restricted.html')
